@@ -1,42 +1,40 @@
-# Last.fm Heatmap
+# Heatmaps
 
-![flamboh's heatmap](https://fm-heat.oli.boo/flamboh?display=minimal)
-
-Embeddable GitHub-style activity graphs for Last.fm scrobbling stats.
+Embeddable, matching GitHub-style activity graphs for Last.fm and GitHub.
 
 ```html
-<a href="https://www.last.fm/user/YOUR_USERNAME">
-  <img src="https://fm-heat.oli.boo/YOUR_USERNAME" alt="Last.fm activity" />
-</a>
+<img src="https://heat.oli.boo/lastfm/YOUR_USERNAME" alt="Last.fm activity" />
+<img src="https://heat.oli.boo/github/YOUR_USERNAME" alt="GitHub activity" />
 ```
 
-or
+Both sources expose the same interface:
 
-`https://fm-heat.oli.boo/YOUR_USERNAME.png` to embed on social platforms like Discord or Twitter.
+- `GET /lastfm/:username` and `GET /github/:username` return adaptive SVGs.
+- Add `.svg` for an explicit SVG URL.
+- Add `.png?theme=light` or `.png?theme=dark` for a 2× PNG.
+- Add `/streak` for the current UTC streak as `{"streak": 14}`.
 
-- `GET /:username` and `GET /:username.svg` return a theme-adaptive svg.
-- `GET /:username.png?theme=light` returns a light-mode png.
-- `GET /:username.png?theme=dark` returns a dark-mode png.
-- `GET /:username/streak` returns the current UTC listening streak as
-  `{"streak": 14}`.
+All images accept `display=full|dates|minimal`. `full` includes labels, totals,
+attribution, and the legend; `dates` omits the footer; `minimal` returns only the
+tile grid.
 
-All image formats accept a `display` parameter:
+The legacy `/:username`, `/:username.svg`, `/:username.png`, and
+`/:username/streak` Last.fm routes remain available during migration.
 
-- `display=full` is the default and includes dates, totals, attribution, and the
-  legend.
-- `display=dates` keeps the month and weekday labels but removes the footer.
-- `display=minimal` returns only the heatmap itself.
-
-Use svg for websites, png for external embeds.
-
-The streak includes today after the first completed scrobble. Otherwise, an
+The streak includes today after its first completed activity. Otherwise, an
 active streak continues through yesterday until the current UTC day ends.
 
 ## How it works
 
-- A Cloudflare Worker fetches completed scrobbles from Last.fm.
-- Daily aggregates are stored in Workers KV. After the first 53-week backfill,
-  refreshes overlap the previous two days and fetch only recent data.
-- Rendered svg, png, and streak responses are cached at the edge for six hours.
+- Last.fm completed scrobbles and GitHub GraphQL `contributionCalendar` days are
+  normalized into the same daily activity snapshot.
+- One renderer supplies identical layouts, display modes, SVG/PNG output, and
+  source-specific red or green palettes.
+- Source-isolated daily aggregates are stored in Workers KV. Rendered images and
+  streak responses are cached at the edge for six hours.
 
 See [DEPLOY.md](DEPLOY.md) to deploy your own instance.
+
+## License
+
+MIT

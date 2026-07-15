@@ -1,7 +1,10 @@
 export interface Env {
   ACTIVITY_CACHE: KVNamespace;
   LASTFM_API_KEY: string;
+  GITHUB_TOKEN: string;
 }
+
+export type ActivitySource = "lastfm" | "github";
 
 export interface ActivitySnapshot {
   username: string;

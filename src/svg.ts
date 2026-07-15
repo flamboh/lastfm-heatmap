@@ -1,5 +1,5 @@
 import { addUtcDays, getCalendarRange } from "./dates";
-import type { ActivitySnapshot } from "./types";
+import type { ActivitySnapshot, ActivitySource } from "./types";
 
 const FULL_WIDTH = 734;
 const FULL_HEIGHT = 132;
@@ -12,15 +12,55 @@ const GRID_HEIGHT = 7 * CELL + 6 * GAP;
 export type GraphTheme = "light" | "dark";
 export type GraphDisplay = "full" | "dates" | "minimal";
 
-const LIGHT_COLORS = ["#eeeeee", "#ff9191", "#ff7777", "#ef4444", "#bf3636"];
-const DARK_COLORS = ["#111111", "#ad3f3f", "#d64e4e", "#ff7272", "#ff8f8f"];
+interface HeatmapPresentation {
+  name: string;
+  activityName: string;
+  unit: string;
+  units: string;
+  attribution: string;
+  lightColors: string[];
+  darkColors: string[];
+}
+
+const PRESENTATIONS: Record<ActivitySource, HeatmapPresentation> = {
+  lastfm: {
+    name: "Last.fm",
+    activityName: "Last.fm activity",
+    unit: "scrobble",
+    units: "scrobbles",
+    attribution: "last.fm",
+    lightColors: ["#eeeeee", "#ff9191", "#ff7777", "#ef4444", "#bf3636"],
+    darkColors: ["#111111", "#ad3f3f", "#d64e4e", "#ff7272", "#ff8f8f"],
+  },
+  github: {
+    name: "GitHub",
+    activityName: "GitHub activity",
+    unit: "contribution",
+    units: "contributions",
+    attribution: "github",
+    lightColors: ["#eeeeee", "#c6e48b", "#7bc96f", "#239a3b", "#196127"],
+    darkColors: ["#111111", "#0e4429", "#006d32", "#26a641", "#39d353"],
+  },
+};
+
+export interface RenderActivityOptions {
+  source?: ActivitySource;
+  now?: Date;
+  theme?: GraphTheme;
+  display?: GraphDisplay;
+}
 
 export function renderActivitySvg(
   snapshot: ActivitySnapshot,
-  now = new Date(),
-  theme?: GraphTheme,
-  display: GraphDisplay = "full",
+  options: RenderActivityOptions = {},
 ): string {
+  const {
+    source = "lastfm",
+    now = new Date(),
+    theme,
+    display = "full",
+  } = options;
+  const presentation = PRESENTATIONS[source];
   const { start, end } = getCalendarRange(now);
   const levels = getThresholds(Object.values(snapshot.counts));
   const total = Object.values(snapshot.counts).reduce(
@@ -48,11 +88,12 @@ export function renderActivitySvg(
     const weekday = offset % 7;
     const level = getLevel(count, levels);
     cells.push(
-      `<rect class="day level-${level}" x="${gridX + week * (CELL + GAP)}" y="${gridY + weekday * (CELL + GAP)}" width="${CELL}" height="${CELL}" rx="2" data-date="${dateKey}" data-count="${count}"><title>${count} scrobble${count === 1 ? "" : "s"} on ${formatDate(date)}</title></rect>`,
+      `<rect class="day level-${level}" x="${gridX + week * (CELL + GAP)}" y="${gridY + weekday * (CELL + GAP)}" width="${CELL}" height="${CELL}" rx="2" data-date="${dateKey}" data-count="${count}"><title>${count} ${count === 1 ? presentation.unit : presentation.units} on ${formatDate(date)}</title></rect>`,
     );
   }
 
-  const colors = theme === "dark" ? DARK_COLORS : LIGHT_COLORS;
+  const colors =
+    theme === "dark" ? presentation.darkColors : presentation.lightColors;
   const textColor = theme === "dark" ? "#8c959f" : "#57606a";
   const stroke =
     theme === "dark" ? "rgba(240,246,252,.1)" : "rgba(27,31,36,.06)";
@@ -62,7 +103,7 @@ export function renderActivitySvg(
     @media (prefers-color-scheme: dark) {
       text { fill: #8c959f; }
       .day { stroke: rgba(240,246,252,.1); }
-      ${DARK_COLORS.map((color, index) => `.level-${index} { fill: ${color}; }`).join("\n      ")}
+      ${presentation.darkColors.map((color, index) => `.level-${index} { fill: ${color}; }`).join("\n      ")}
     }`;
   const dateLabels = minimal
     ? ""
@@ -72,16 +113,16 @@ export function renderActivitySvg(
   <text x="0" y="${gridY + 5 * (CELL + GAP) + 9}">Fri</text>`;
   const footer =
     display === "full"
-      ? `<text x="${gridX}" y="126">${total.toLocaleString("en-US")} scrobbles in the last year</text>
-  <text x="560" y="126">last.fm</text>
+      ? `<text x="${gridX}" y="126">${total.toLocaleString("en-US")} ${presentation.units} in the last year</text>
+  <text x="560" y="126">${presentation.attribution}</text>
   <text x="613" y="126">Less</text>
   ${colors.map((_, index) => `<rect class="day level-${index}" x="${641 + index * 13}" y="117" width="10" height="10" rx="2"/>`).join("\n  ")}
   <text x="706" y="126">More</text>`
       : "";
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="title desc">
-  <title id="title">${escapeXml(snapshot.username)}'s Last.fm activity</title>
-  <desc id="desc">${total.toLocaleString("en-US")} scrobbles over the last year, grouped by UTC date.</desc>
+  <title id="title">${escapeXml(snapshot.username)}'s ${presentation.activityName}</title>
+  <desc id="desc">${total.toLocaleString("en-US")} ${presentation.units} over the last year, grouped by UTC date.</desc>
   <style>
     text { font: 10px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: ${textColor}; }
     .day { shape-rendering: geometricPrecision; stroke: ${stroke}; stroke-width: 1px; }
@@ -93,10 +134,14 @@ export function renderActivitySvg(
 </svg>`;
 }
 
-export function renderErrorSvg(message: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="734" height="132" viewBox="0 0 734 132" role="img" aria-label="Last.fm graph error">
+export function renderErrorSvg(
+  message: string,
+  source: ActivitySource = "lastfm",
+): string {
+  const name = PRESENTATIONS[source].name;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="734" height="132" viewBox="0 0 734 132" role="img" aria-label="${name} graph error">
   <rect width="734" height="132" rx="6" fill="#fff" stroke="#d0d7de"/>
-  <text x="367" y="62" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="14" fill="#1f2328">Could not load Last.fm activity</text>
+  <text x="367" y="62" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="14" fill="#1f2328">Could not load ${name} activity</text>
   <text x="367" y="84" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="11" fill="#636c76">${escapeXml(message)}</text>
 </svg>`;
 }

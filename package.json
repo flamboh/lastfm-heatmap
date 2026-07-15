@@ -1,9 +1,9 @@
 {
-  "name": "lastfm-heatmap",
+  "name": "heatmaps",
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
-  "repository": "github:flamboh/lastfm-heatmap",
+  "repository": "github:flamboh/heatmaps",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",

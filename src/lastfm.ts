@@ -339,7 +339,9 @@ async function fetchPage({
   url.searchParams.set("to", String(to));
 
   const response = await fetcher(url, {
-    headers: { "User-Agent": "lastfm-heatmap/0.1 (+https://github.com/)" },
+    headers: {
+      "User-Agent": "heatmaps/0.1 (+https://github.com/flamboh/heatmaps)",
+    },
   });
   if (!response.ok) {
     throw new LastfmError(`Last.fm request failed (${response.status})`);

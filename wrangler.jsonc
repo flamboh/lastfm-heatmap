@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "lastfm-heatmap",
+  "name": "heatmaps",
   "account_id": "2bfd49b5505b1528dad6678b83c75fb4",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-15",
@@ -15,7 +15,7 @@
   "preview_urls": false,
   "routes": [
     {
-      "pattern": "fm-heat.oli.boo",
+      "pattern": "heat.oli.boo",
       "custom_domain": true,
     },
   ],
@@ -30,6 +30,6 @@
     },
   ],
   "secrets": {
-    "required": ["LASTFM_API_KEY"],
+    "required": ["LASTFM_API_KEY", "GITHUB_TOKEN"],
   },
 }

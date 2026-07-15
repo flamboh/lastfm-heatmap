@@ -10,6 +10,7 @@ function testEnv(): Env {
   const values = new Map<string, string>();
   return {
     LASTFM_API_KEY: "secret",
+    GITHUB_TOKEN: "github-secret",
     ACTIVITY_CACHE: {
       get: vi.fn(async (key: string) => values.get(key) ?? null),
       put: vi.fn(async (key: string, value: string) => {
@@ -34,7 +35,7 @@ function edgeCache(): Pick<Cache, "match" | "put"> {
 }
 
 describe("public handler", () => {
-  it("documents the one-segment embed interface at the root", async () => {
+  it("documents both source interfaces at the root", async () => {
     const handle = createHandler({ edgeCache: edgeCache() });
     const response = await handle(
       new Request("https://graph.example/"),
@@ -43,9 +44,9 @@ describe("public handler", () => {
     );
 
     expect(response.headers.get("Content-Type")).toContain("text/html");
-    expect(await response.text()).toContain(
-      'src="https://graph.example/YOUR_USERNAME"',
-    );
+    const body = await response.text();
+    expect(body).toContain('src="https://graph.example/lastfm/YOUR_USERNAME"');
+    expect(body).toContain('src="https://graph.example/github/YOUR_USERNAME"');
   });
 
   it("rejects invalid usernames without calling Last.fm", async () => {
@@ -103,6 +104,139 @@ describe("public handler", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toContain("image/svg+xml");
     expect(await response.text()).toContain("listener's Last.fm activity");
+  });
+
+  it("supports canonical Last.fm routes", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        recenttracks: { "@attr": { totalPages: "1" }, track: [] },
+      }),
+    );
+    const response = await createHandler({
+      fetcher,
+      edgeCache: edgeCache(),
+    })(
+      new Request("https://graph.example/lastfm/listener.svg"),
+      testEnv(),
+      testContext(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("listener's Last.fm activity");
+  });
+
+  it("renders GitHub activity from GraphQL", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        Response.json({
+          data: {
+            user: {
+              contributionsCollection: {
+                contributionCalendar: {
+                  weeks: [
+                    {
+                      contributionDays: [
+                        { date: "2026-07-15", contributionCount: 7 },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        }),
+      ),
+    );
+    const response = await createHandler({
+      fetcher,
+      edgeCache: edgeCache(),
+      now: () => new Date("2026-07-15T12:00:00Z"),
+    })(
+      new Request("https://graph.example/github/octocat.svg"),
+      testEnv(),
+      testContext(),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("octocat's GitHub activity");
+    expect(body).toContain('data-date="2026-07-15" data-count="7"');
+    expect(body).toContain(".level-4 { fill: #196127; }");
+  });
+
+  it("returns GitHub streak JSON", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        Response.json({
+          data: {
+            user: {
+              contributionsCollection: {
+                contributionCalendar: {
+                  weeks: [
+                    {
+                      contributionDays: [
+                        { date: "2026-07-13", contributionCount: 1 },
+                        { date: "2026-07-14", contributionCount: 2 },
+                        { date: "2026-07-15", contributionCount: 0 },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        }),
+      ),
+    );
+    const response = await createHandler({
+      fetcher,
+      edgeCache: edgeCache(),
+      now: () => new Date("2026-07-15T12:00:00Z"),
+    })(
+      new Request("https://graph.example/github/octocat/streak"),
+      testEnv(),
+      testContext(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ streak: 2 });
+  });
+
+  it("supports GitHub PNG themes and display modes", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        Response.json({
+          data: {
+            user: {
+              contributionsCollection: {
+                contributionCalendar: { weeks: [] },
+              },
+            },
+          },
+        }),
+      ),
+    );
+    const rasterize = vi.fn(
+      async (_svg: string) => new Uint8Array([137, 80, 78, 71]),
+    );
+    const response = await createHandler({
+      fetcher,
+      rasterize,
+      edgeCache: edgeCache(),
+      now: () => new Date("2026-07-15T12:00:00Z"),
+    })(
+      new Request(
+        "https://graph.example/github/octocat.png?theme=dark&display=minimal",
+      ),
+      testEnv(),
+      testContext(),
+    );
+
+    expect(response.headers.get("Content-Type")).toBe("image/png");
+    expect(rasterize.mock.calls[0]?.[0]).toContain(
+      ".level-4 { fill: #39d353; }",
+    );
+    expect(rasterize.mock.calls[0]?.[0]).toContain('width="686" height="88"');
   });
 
   it("returns the current UTC listening streak as JSON", async () => {

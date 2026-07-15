@@ -10,7 +10,7 @@ describe("SVG rendering", () => {
         fetchedThrough: 0,
         updatedAt: 0,
       },
-      new Date("2026-07-15T18:00:00Z"),
+      { now: new Date("2026-07-15T18:00:00Z") },
     );
 
     expect(svg).toContain("listener &amp; friends's Last.fm activity");
@@ -33,6 +33,26 @@ describe("SVG rendering", () => {
     expect(renderErrorSvg("bad <value>")).toContain("bad &lt;value&gt;");
   });
 
+  it("renders GitHub copy and rshah-style green palettes", () => {
+    const svg = renderActivitySvg(
+      {
+        username: "octocat",
+        counts: { "2026-07-15": 4 },
+        fetchedThrough: 0,
+        updatedAt: 0,
+      },
+      { source: "github", now: new Date("2026-07-15T18:00:00Z") },
+    );
+
+    expect(svg).toContain("octocat's GitHub activity");
+    expect(svg).toContain("4 contributions in the last year");
+    expect(svg).toContain('<text x="560" y="126">github</text>');
+    expect(svg).toContain(".level-1 { fill: #c6e48b; }");
+    expect(svg).toContain(".level-4 { fill: #196127; }");
+    expect(svg).toContain(".level-1 { fill: #0e4429; }");
+    expect(svg).toContain(".level-4 { fill: #39d353; }");
+  });
+
   it("renders a fixed dark theme for raster output", () => {
     const svg = renderActivitySvg(
       {
@@ -41,8 +61,7 @@ describe("SVG rendering", () => {
         fetchedThrough: 0,
         updatedAt: 0,
       },
-      new Date("2026-07-15T18:00:00Z"),
-      "dark",
+      { now: new Date("2026-07-15T18:00:00Z"), theme: "dark" },
     );
 
     expect(svg).not.toContain("@media (prefers-color-scheme: dark)");
@@ -61,9 +80,7 @@ describe("SVG rendering", () => {
         fetchedThrough: 0,
         updatedAt: 0,
       },
-      new Date("2026-07-15T18:00:00Z"),
-      undefined,
-      "dates",
+      { now: new Date("2026-07-15T18:00:00Z"), display: "dates" },
     );
 
     expect(svg).toContain('width="734" height="112"');
@@ -82,9 +99,7 @@ describe("SVG rendering", () => {
         fetchedThrough: 0,
         updatedAt: 0,
       },
-      new Date("2026-07-15T18:00:00Z"),
-      undefined,
-      "minimal",
+      { now: new Date("2026-07-15T18:00:00Z"), display: "minimal" },
     );
 
     expect(svg).toContain('width="686" height="88"');
