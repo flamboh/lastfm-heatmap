@@ -1,5 +1,5 @@
-import { getCalendarRange, toDateKey, unixNow } from "./dates";
-import type { ActivitySnapshot, ActivityStore } from "./types";
+import { addUtcDays, getCalendarRange, toDateKey, unixNow } from "./dates";
+import type { ActivitySnapshot, ActivityStore, ActivityStreak } from "./types";
 
 const API_URL = "https://ws.audioscrobbler.com/2.0/";
 const PAGE_SIZE = 200;
@@ -7,6 +7,7 @@ const CONCURRENCY = 6;
 const FRESH_FOR_SECONDS = 6 * 60 * 60;
 const MAX_PAGES = 500;
 const REFRESH_OVERLAP_SECONDS = 2 * 86_400;
+const STREAK_BACKFILL_DAYS = 32;
 
 interface LastfmTrack {
   date?: { uts?: string };
@@ -37,6 +38,7 @@ export interface LoadActivityOptions {
   store: ActivityStore;
   fetcher?: typeof fetch;
   now?: Date;
+  includeStreak?: boolean;
 }
 
 export async function loadActivity({
@@ -45,16 +47,36 @@ export async function loadActivity({
   store,
   fetcher = fetch,
   now = new Date(),
+  includeStreak = false,
 }: LoadActivityOptions): Promise<ActivitySnapshot> {
   const cacheKey = `activity:v1:${username.toLowerCase()}`;
   const cached = await store.get(cacheKey);
   const currentUnix = unixNow(now);
 
-  if (cached && currentUnix - cached.updatedAt < FRESH_FOR_SECONDS) {
+  const fresh = cached && currentUnix - cached.updatedAt < FRESH_FOR_SECONDS;
+  if (fresh && (!includeStreak || cached.streak)) {
     return cached;
   }
 
   const range = getCalendarRange(now);
+  if (fresh) {
+    const snapshot = {
+      ...cached,
+      streak: await resolveStreak({
+        counts: cached.counts,
+        rangeStart: dateKey(range.start),
+        previous: cached.streak,
+        username,
+        apiKey,
+        fetcher,
+        now,
+        pageBudget: MAX_PAGES,
+      }),
+    };
+    await store.put(cacheKey, snapshot);
+    return snapshot;
+  }
+
   const from = cached
     ? Math.max(
         range.startUnix,
@@ -62,12 +84,13 @@ export async function loadActivity({
           86_400,
       )
     : range.startUnix;
-  const newCounts = await fetchDailyCounts({
+  const fetched = await fetchDailyCountsWithPages({
     username,
     apiKey,
     from,
     to: currentUnix,
     fetcher,
+    pageBudget: MAX_PAGES,
   });
 
   const counts: Record<string, number> = {};
@@ -76,7 +99,7 @@ export async function loadActivity({
   for (const [date, count] of Object.entries(cached?.counts ?? {})) {
     if (date >= rangeStart && date < refreshStart) counts[date] = count;
   }
-  for (const [date, count] of Object.entries(newCounts)) {
+  for (const [date, count] of Object.entries(fetched.counts)) {
     counts[date] = (counts[date] ?? 0) + count;
   }
 
@@ -86,6 +109,18 @@ export async function loadActivity({
     fetchedThrough: currentUnix,
     updatedAt: currentUnix,
   };
+  if (includeStreak || cached?.streak) {
+    snapshot.streak = await resolveStreak({
+      counts,
+      rangeStart,
+      previous: cached?.streak,
+      username,
+      apiKey,
+      fetcher,
+      now,
+      pageBudget: MAX_PAGES - fetched.pages,
+    });
+  }
   await store.put(cacheKey, snapshot);
   return snapshot;
 }
@@ -98,6 +133,11 @@ interface FetchDailyCountsOptions {
   fetcher: typeof fetch;
 }
 
+interface FetchDailyCountsResult {
+  counts: Record<string, number>;
+  pages: number;
+}
+
 export async function fetchDailyCounts({
   username,
   apiKey,
@@ -105,7 +145,35 @@ export async function fetchDailyCounts({
   to,
   fetcher,
 }: FetchDailyCountsOptions): Promise<Record<string, number>> {
-  if (from > to) return {};
+  return (
+    await fetchDailyCountsWithPages({
+      username,
+      apiKey,
+      from,
+      to,
+      fetcher,
+      pageBudget: MAX_PAGES,
+    })
+  ).counts;
+}
+
+async function fetchDailyCountsWithPages({
+  username,
+  apiKey,
+  from,
+  to,
+  fetcher,
+  pageBudget,
+}: FetchDailyCountsOptions & {
+  pageBudget: number;
+}): Promise<FetchDailyCountsResult> {
+  if (from > to) return { counts: {}, pages: 0 };
+  if (pageBudget < 1) {
+    throw new LastfmError(
+      "Streak history exceeds the safe backfill limit",
+      422,
+    );
+  }
 
   const first = await fetchPage({
     username,
@@ -117,10 +185,10 @@ export async function fetchDailyCounts({
   });
   const totalPages = Number(first.recenttracks?.["@attr"]?.totalPages ?? 1);
 
-  if (!Number.isFinite(totalPages) || totalPages < 1) {
+  if (!Number.isInteger(totalPages) || totalPages < 0) {
     throw new LastfmError("Last.fm returned invalid pagination data");
   }
-  if (totalPages > MAX_PAGES) {
+  if (totalPages > pageBudget) {
     throw new LastfmError(
       `This account has too many scrobbles to backfill safely (${totalPages} pages)`,
       422,
@@ -145,7 +213,93 @@ export async function fetchDailyCounts({
     }
   }
 
-  return counts;
+  return { counts, pages: Math.max(1, totalPages) };
+}
+
+interface ResolveStreakOptions {
+  counts: Record<string, number>;
+  rangeStart: string;
+  previous?: ActivityStreak;
+  username: string;
+  apiKey: string;
+  fetcher: typeof fetch;
+  now: Date;
+  pageBudget: number;
+}
+
+async function resolveStreak({
+  counts,
+  rangeStart,
+  previous,
+  username,
+  apiKey,
+  fetcher,
+  now,
+  pageBudget,
+}: ResolveStreakOptions): Promise<ActivityStreak> {
+  const today = dateKey(now);
+  const through = counts[today] ? today : shiftDateKey(today, -1);
+  const recent = findStreakStart(counts, through, rangeStart);
+
+  if (recent !== undefined) return { start: recent, through };
+  if (previous?.start && previous.start <= rangeStart) {
+    return { start: previous.start, through };
+  }
+
+  let candidateStart = rangeStart;
+  let remainingPages = pageBudget;
+  while (remainingPages > 0) {
+    const windowEnd = shiftDateKey(candidateStart, -1);
+    const windowStart = shiftDateKey(windowEnd, -(STREAK_BACKFILL_DAYS - 1));
+    const fetched = await fetchDailyCountsWithPages({
+      username,
+      apiKey,
+      from: dateKeyUnix(windowStart),
+      to: dateKeyUnix(shiftDateKey(windowEnd, 1)) - 1,
+      fetcher,
+      pageBudget: remainingPages,
+    });
+    remainingPages -= fetched.pages;
+
+    const start = findStreakStart(fetched.counts, windowEnd, windowStart);
+    if (start !== undefined) return { start, through };
+    candidateStart = windowStart;
+  }
+
+  throw new LastfmError("Streak history exceeds the safe backfill limit", 422);
+}
+
+// Returns undefined when every day in the inspected range is active.
+function findStreakStart(
+  counts: Record<string, number>,
+  through: string,
+  rangeStart: string,
+): string | null | undefined {
+  for (let date = through; date >= rangeStart; date = shiftDateKey(date, -1)) {
+    if (!counts[date]) {
+      return date === through ? null : shiftDateKey(date, 1);
+    }
+  }
+  return undefined;
+}
+
+export function streakDays(streak: ActivityStreak): number {
+  if (!streak.start) return 0;
+  return Math.floor(
+    (dateKeyUnix(streak.through) - dateKeyUnix(streak.start)) / 86_400 + 1,
+  );
+}
+
+function dateKey(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+function dateKeyUnix(value: string): number {
+  return Date.parse(`${value}T00:00:00Z`) / 1000;
+}
+
+function shiftDateKey(value: string, days: number): string {
+  return dateKey(addUtcDays(new Date(`${value}T00:00:00Z`), days));
 }
 
 function addTracks(

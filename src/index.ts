@@ -1,4 +1,4 @@
-import { loadActivity, LastfmError } from "./lastfm";
+import { loadActivity, LastfmError, streakDays } from "./lastfm";
 import { renderActivitySvg, renderErrorSvg } from "./svg";
 import type { GraphDisplay, GraphTheme } from "./svg";
 import type {
@@ -18,11 +18,21 @@ const PNG_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "X-Content-Type-Options": "nosniff",
 };
-const IMAGE_CACHE_VERSION = 7;
+const JSON_HEADERS = {
+  "Content-Type": "application/json; charset=utf-8",
+  "Access-Control-Allow-Origin": "*",
+  "X-Content-Type-Options": "nosniff",
+};
+const CACHE_VERSION = 8;
 
 type Output =
   | { format: "svg"; display: GraphDisplay }
-  | { format: "png"; theme: GraphTheme; display: GraphDisplay };
+  | {
+      format: "png";
+      theme: GraphTheme;
+      display: GraphDisplay;
+    }
+  | { format: "streak" };
 
 export interface HandlerDependencies {
   fetcher?: typeof fetch;
@@ -51,14 +61,14 @@ export function createHandler(dependencies: HandlerDependencies = {}) {
     if (parsed instanceof Response) return parsed;
     const { username, output } = parsed;
     if (!isValidUsername(username)) {
-      return svgResponse(renderErrorSvg("Invalid Last.fm username"), 400, 60);
+      return errorResponse(output, "Invalid Last.fm username", 400, 60);
     }
 
     const cache =
       dependencies.edgeCache ??
       (caches as CacheStorage & { default: Cache }).default;
     const cacheKey = new Request(
-      `${url.origin}/__lastfm-heatmap-cache/v${IMAGE_CACHE_VERSION}/${output.format}/${output.format === "png" ? output.theme : "adaptive"}/${output.display}/${encodeURIComponent(username)}`,
+      `${url.origin}/__lastfm-heatmap-cache/v${CACHE_VERSION}/${cachePath(output)}/${encodeURIComponent(username)}`,
     );
     const cachedResponse = await cache.match(cacheKey);
     if (cachedResponse) {
@@ -68,11 +78,7 @@ export function createHandler(dependencies: HandlerDependencies = {}) {
     }
 
     if (!env.LASTFM_API_KEY) {
-      return svgResponse(
-        renderErrorSvg("Server is missing LASTFM_API_KEY"),
-        500,
-        0,
-      );
+      return errorResponse(output, "Server is missing LASTFM_API_KEY", 500, 0);
     }
 
     try {
@@ -82,20 +88,27 @@ export function createHandler(dependencies: HandlerDependencies = {}) {
         store: kvStore(env.ACTIVITY_CACHE),
         fetcher: dependencies.fetcher,
         now: dependencies.now?.(),
+        includeStreak: output.format === "streak",
       });
-      const svg = renderActivitySvg(
-        snapshot,
-        dependencies.now?.(),
-        output.format === "png" ? output.theme : undefined,
-        output.display,
-      );
-      const response = await imageResponse(
-        svg,
-        output,
-        200,
-        6 * 60 * 60,
-        dependencies.rasterize,
-      );
+      const response =
+        output.format === "streak"
+          ? jsonResponse(
+              { streak: streakDays(snapshot.streak!) },
+              200,
+              6 * 60 * 60,
+            )
+          : await imageResponse(
+              renderActivitySvg(
+                snapshot,
+                dependencies.now?.(),
+                output.format === "png" ? output.theme : undefined,
+                output.display,
+              ),
+              output,
+              200,
+              6 * 60 * 60,
+              dependencies.rasterize,
+            );
       context.waitUntil(cache.put(cacheKey, response.clone()));
       return request.method === "HEAD"
         ? new Response(null, response)
@@ -104,11 +117,7 @@ export function createHandler(dependencies: HandlerDependencies = {}) {
       const status = error instanceof LastfmError ? error.status : 500;
       const message =
         error instanceof Error ? error.message : "Unexpected error";
-      return svgResponse(
-        renderErrorSvg(message),
-        status,
-        status === 429 ? 60 : 300,
-      );
+      return errorResponse(output, message, status, status === 429 ? 60 : 300);
     }
   };
 }
@@ -117,6 +126,13 @@ function parseOutput(
   path: string,
   searchParams: URLSearchParams,
 ): { username: string; output: Output } | Response {
+  if (path.endsWith("/streak")) {
+    return {
+      username: path.slice(0, -"/streak".length),
+      output: { format: "streak" },
+    };
+  }
+
   const display = searchParams.get("display") ?? "full";
   if (display !== "full" && display !== "dates" && display !== "minimal") {
     return new Response("display must be full, dates, or minimal", {
@@ -184,9 +200,39 @@ function svgResponse(svg: string, status: number, maxAge: number): Response {
   });
 }
 
+function jsonResponse(
+  body: Record<string, unknown>,
+  status: number,
+  maxAge: number,
+): Response {
+  return Response.json(body, {
+    status,
+    headers: {
+      ...JSON_HEADERS,
+      "Cache-Control": `public, max-age=300, s-maxage=${maxAge}`,
+    },
+  });
+}
+
+function errorResponse(
+  output: Output,
+  message: string,
+  status: number,
+  maxAge: number,
+): Response {
+  return output.format === "streak"
+    ? jsonResponse({ error: message }, status, maxAge)
+    : svgResponse(renderErrorSvg(message), status, maxAge);
+}
+
+function cachePath(output: Output): string {
+  if (output.format === "streak") return "streak";
+  return `${output.format}/${output.format === "png" ? output.theme : "adaptive"}/${output.display}`;
+}
+
 async function imageResponse(
   svg: string,
-  output: Output,
+  output: Exclude<Output, { format: "streak" }>,
   status: number,
   maxAge: number,
   rasterize = defaultRasterize,
@@ -215,7 +261,7 @@ async function defaultRasterize(svg: string): Promise<Uint8Array> {
 function landingPage(origin: string): Response {
   const escapedOrigin = origin.replace(/[<>&"']/g, "");
   return new Response(
-    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Last.fm Heatmap</title><style>body{max-width:760px;margin:10vh auto;padding:24px;font:16px/1.5 system-ui;color:#1f2328}code{background:#f6f8fa;padding:.2em .4em;border-radius:4px}</style><h1>Last.fm Heatmap</h1><p>Embeddable GitHub-style activity heatmaps for Last.fm.</p><pre><code>&lt;img src="${escapedOrigin}/YOUR_USERNAME" alt="Last.fm activity"&gt;</code></pre><p>Adaptive SVG: <code>/YOUR_USERNAME</code> or <code>/YOUR_USERNAME.svg</code></p><p>Social PNG: <code>/YOUR_USERNAME.png?theme=light</code> or <code>/YOUR_USERNAME.png?theme=dark</code></p><p>Display: <code>?display=full</code>, <code>?display=dates</code>, or <code>?display=minimal</code></p><p>Dates are grouped in UTC. Data provided by <a href="https://www.last.fm/">Last.fm</a>.</p></html>`,
+    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Last.fm Heatmap</title><style>body{max-width:760px;margin:10vh auto;padding:24px;font:16px/1.5 system-ui;color:#1f2328}code{background:#f6f8fa;padding:.2em .4em;border-radius:4px}</style><h1>Last.fm Heatmap</h1><p>Embeddable GitHub-style activity heatmaps for Last.fm.</p><pre><code>&lt;img src="${escapedOrigin}/YOUR_USERNAME" alt="Last.fm activity"&gt;</code></pre><p>Adaptive SVG: <code>/YOUR_USERNAME</code> or <code>/YOUR_USERNAME.svg</code></p><p>Social PNG: <code>/YOUR_USERNAME.png?theme=light</code> or <code>/YOUR_USERNAME.png?theme=dark</code></p><p>Streak JSON: <code>/YOUR_USERNAME/streak</code></p><p>Display: <code>?display=full</code>, <code>?display=dates</code>, or <code>?display=minimal</code></p><p>Dates are grouped in UTC. Data provided by <a href="https://www.last.fm/">Last.fm</a>.</p></html>`,
     { headers: { "Content-Type": "text/html; charset=utf-8" } },
   );
 }

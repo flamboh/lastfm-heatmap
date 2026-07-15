@@ -8,6 +8,12 @@ export interface ActivitySnapshot {
   counts: Record<string, number>;
   fetchedThrough: number;
   updatedAt: number;
+  streak?: ActivityStreak;
+}
+
+export interface ActivityStreak {
+  start: string | null;
+  through: string;
 }
 
 export interface ActivityStore {

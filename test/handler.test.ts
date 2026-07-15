@@ -105,6 +105,59 @@ describe("public handler", () => {
     expect(await response.text()).toContain("listener's Last.fm activity");
   });
 
+  it("returns the current UTC listening streak as JSON", async () => {
+    const context = testContext();
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        recenttracks: {
+          "@attr": { totalPages: "1" },
+          track: [
+            {
+              date: { uts: String(Date.parse("2026-07-14T12:00:00Z") / 1000) },
+            },
+            {
+              date: { uts: String(Date.parse("2026-07-13T12:00:00Z") / 1000) },
+            },
+          ],
+        },
+      }),
+    );
+    const handle = createHandler({
+      fetcher,
+      edgeCache: edgeCache(),
+      now: () => new Date("2026-07-15T12:00:00Z"),
+    });
+    const response = await handle(
+      new Request("https://graph.example/listener/streak"),
+      testEnv(),
+      context,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toContain("application/json");
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(response.headers.get("Cache-Control")).toContain("s-maxage=21600");
+    expect(await response.json()).toEqual({ streak: 2 });
+    expect(context.waitUntil).toHaveBeenCalledOnce();
+  });
+
+  it("returns JSON errors for streak requests", async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    const handle = createHandler({ fetcher, edgeCache: edgeCache() });
+    const response = await handle(
+      new Request("https://graph.example/a%2Fb/streak"),
+      testEnv(),
+      testContext(),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("Content-Type")).toContain("application/json");
+    expect(await response.json()).toEqual({
+      error: "Invalid Last.fm username",
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("requires an explicit PNG theme", async () => {
     const fetcher = vi.fn<typeof fetch>();
     const handle = createHandler({ fetcher, edgeCache: edgeCache() });

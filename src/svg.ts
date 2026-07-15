@@ -64,7 +64,6 @@ export function renderActivitySvg(
       .day { stroke: rgba(240,246,252,.1); }
       ${DARK_COLORS.map((color, index) => `.level-${index} { fill: ${color}; }`).join("\n      ")}
     }`;
-
   const dateLabels = minimal
     ? ""
     : `${renderMonthLabels(start, gridX)}
