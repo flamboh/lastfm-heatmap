@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "lastfm-heatmap",
+  "account_id": "2bfd49b5505b1528dad6678b83c75fb4",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-15",
+  "rules": [
+    {
+      "type": "Data",
+      "globs": ["**/*.woff2"],
+      "fallthrough": true,
+    },
+  ],
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "fm-heat.oli.boo",
+      "custom_domain": true,
+    },
+  ],
+  "limits": {
+    "subrequests": 1000,
+    "cpu_ms": 30000,
+  },
+  "kv_namespaces": [
+    {
+      "binding": "ACTIVITY_CACHE",
+      "id": "b997874a04e34db7b0fedbd981a2e0a8",
+    },
+  ],
+  "secrets": {
+    "required": ["LASTFM_API_KEY"],
+  },
+}
