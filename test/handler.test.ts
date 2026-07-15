@@ -53,7 +53,7 @@ describe("public handler", () => {
     const fetcher = vi.fn<typeof fetch>();
     const handle = createHandler({ fetcher, edgeCache: edgeCache() });
     const response = await handle(
-      new Request("https://graph.example/a%2Fb"),
+      new Request("https://graph.example/lastfm/a%2Fb"),
       testEnv(),
       testContext(),
     );
@@ -63,7 +63,7 @@ describe("public handler", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("returns and schedules caching of a generated SVG", async () => {
+  it("returns and schedules caching of a generated Last.fm SVG", async () => {
     const context = testContext();
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({
@@ -76,7 +76,7 @@ describe("public handler", () => {
       now: () => new Date("2026-07-15T12:00:00Z"),
     });
     const response = await handle(
-      new Request("https://graph.example/listener"),
+      new Request("https://graph.example/lastfm/listener"),
       testEnv(),
       context,
     );
@@ -88,7 +88,7 @@ describe("public handler", () => {
     expect(context.waitUntil).toHaveBeenCalledOnce();
   });
 
-  it("supports an explicit SVG extension", async () => {
+  it("supports an explicit Last.fm SVG extension", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({
         recenttracks: { "@attr": { totalPages: "1" }, track: [] },
@@ -96,7 +96,7 @@ describe("public handler", () => {
     );
     const handle = createHandler({ fetcher, edgeCache: edgeCache() });
     const response = await handle(
-      new Request("https://graph.example/listener.svg"),
+      new Request("https://graph.example/lastfm/listener.svg"),
       testEnv(),
       testContext(),
     );
@@ -123,6 +123,23 @@ describe("public handler", () => {
 
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("listener's Last.fm activity");
+  });
+
+  it.each([
+    "/listener",
+    "/listener.svg",
+    "/listener.png?theme=dark",
+    "/listener/streak",
+  ])("does not maintain the legacy Last.fm route %s", async (path) => {
+    const fetcher = vi.fn<typeof fetch>();
+    const response = await createHandler({
+      fetcher,
+      edgeCache: edgeCache(),
+    })(new Request(`https://graph.example${path}`), testEnv(), testContext());
+
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe("Not found");
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("renders GitHub activity from GraphQL", async () => {
@@ -262,7 +279,7 @@ describe("public handler", () => {
       now: () => new Date("2026-07-15T12:00:00Z"),
     });
     const response = await handle(
-      new Request("https://graph.example/listener/streak"),
+      new Request("https://graph.example/lastfm/listener/streak"),
       testEnv(),
       context,
     );
@@ -279,7 +296,7 @@ describe("public handler", () => {
     const fetcher = vi.fn<typeof fetch>();
     const handle = createHandler({ fetcher, edgeCache: edgeCache() });
     const response = await handle(
-      new Request("https://graph.example/a%2Fb/streak"),
+      new Request("https://graph.example/lastfm/a%2Fb/streak"),
       testEnv(),
       testContext(),
     );
@@ -296,7 +313,7 @@ describe("public handler", () => {
     const fetcher = vi.fn<typeof fetch>();
     const handle = createHandler({ fetcher, edgeCache: edgeCache() });
     const response = await handle(
-      new Request("https://graph.example/listener.png"),
+      new Request("https://graph.example/lastfm/listener.png"),
       testEnv(),
       testContext(),
     );
@@ -312,7 +329,7 @@ describe("public handler", () => {
     const fetcher = vi.fn<typeof fetch>();
     const handle = createHandler({ fetcher, edgeCache: edgeCache() });
     const response = await handle(
-      new Request("https://graph.example/listener.svg?display=compact"),
+      new Request("https://graph.example/lastfm/listener.svg?display=compact"),
       testEnv(),
       testContext(),
     );
@@ -342,7 +359,7 @@ describe("public handler", () => {
     });
     const response = await handle(
       new Request(
-        "https://graph.example/listener.png?theme=dark&display=minimal",
+        "https://graph.example/lastfm/listener.png?theme=dark&display=minimal",
       ),
       testEnv(),
       context,

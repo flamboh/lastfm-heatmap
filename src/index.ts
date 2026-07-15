@@ -171,10 +171,14 @@ function parseRequest(
   searchParams: URLSearchParams,
 ): ParsedRequest | Response {
   const segments = path.split("/");
-  const explicitSource = segments[0] === "lastfm" || segments[0] === "github";
-  const source: ActivitySource = explicitSource
-    ? (segments.shift() as ActivitySource)
-    : "lastfm";
+  const sourceSegment = segments.shift();
+  if (sourceSegment !== "lastfm" && sourceSegment !== "github") {
+    return new Response("Not found", {
+      status: 404,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+  const source: ActivitySource = sourceSegment;
   let resource = segments.join("/");
 
   if (resource.endsWith("/streak")) {
