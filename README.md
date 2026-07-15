@@ -1,5 +1,7 @@
 # Last.fm Heatmap
 
+![flamboh's heatmap](https://fm-heat.oli.boo/flamboh?display=minimal)
+
 Embeddable GitHub-style activity graphs for Last.fm.
 
 ```html
@@ -32,7 +34,3 @@ Use svg for websites, png for external embeds.
 - Rendered svg and png responses are cached at the edge for six hours.
 
 See [DEPLOY.md](DEPLOY.md) to deploy your own instance.
-
-## License
-
-MIT
