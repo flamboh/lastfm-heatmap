@@ -2,7 +2,7 @@
 
 ![flamboh's heatmap](https://fm-heat.oli.boo/flamboh?display=minimal)
 
-Embeddable GitHub-style activity graphs for Last.fm.
+Embeddable GitHub-style activity graphs for Last.fm scrobbling stats.
 
 ```html
 <a href="https://www.last.fm/user/YOUR_USERNAME">
