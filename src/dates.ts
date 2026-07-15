@@ -7,6 +7,12 @@ export interface CalendarRange {
   startUnix: number;
 }
 
+export interface CalendarTotal {
+  total: number;
+  from: string;
+  to: string;
+}
+
 export function getCalendarRange(now: Date): CalendarRange {
   const end = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
@@ -21,6 +27,22 @@ export function getCalendarRange(now: Date): CalendarRange {
   };
 }
 
+export function getCalendarTotal(
+  counts: Record<string, number>,
+  now: Date,
+): CalendarTotal {
+  const { start, end } = getCalendarRange(now);
+  const from = dateKey(start);
+  const to = dateKey(end);
+  let total = 0;
+
+  for (const [date, count] of Object.entries(counts)) {
+    if (date >= from && date <= to) total += count;
+  }
+
+  return { total, from, to };
+}
+
 export function toDateKey(unixSeconds: number): string {
   return new Date(unixSeconds * 1000).toISOString().slice(0, 10);
 }
@@ -31,4 +53,8 @@ export function addUtcDays(date: Date, days: number): Date {
 
 export function unixNow(date: Date): number {
   return Math.floor(date.getTime() / 1000);
+}
+
+function dateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }

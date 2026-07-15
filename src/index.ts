@@ -1,4 +1,5 @@
 import { GithubError, loadGithubActivity } from "./github";
+import { getCalendarTotal } from "./dates";
 import { loadActivity, LastfmError, streakDays } from "./lastfm";
 import { renderActivitySvg, renderErrorSvg } from "./svg";
 import type { GraphDisplay, GraphTheme } from "./svg";
@@ -25,7 +26,7 @@ const JSON_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "X-Content-Type-Options": "nosniff",
 };
-const CACHE_VERSION = 9;
+const CACHE_VERSION = 10;
 
 type Output =
   | { format: "svg"; display: GraphDisplay }
@@ -34,7 +35,8 @@ type Output =
       theme: GraphTheme;
       display: GraphDisplay;
     }
-  | { format: "streak" };
+  | { format: "streak" }
+  | { format: "total" };
 
 interface ParsedRequest {
   source: ActivitySource;
@@ -105,7 +107,7 @@ export function createHandler(dependencies: HandlerDependencies = {}) {
     }
 
     try {
-      const now = dependencies.now?.();
+      const now = dependencies.now?.() ?? new Date();
       const store = kvStore(env.ACTIVITY_CACHE);
       const snapshot =
         source === "github"
@@ -132,18 +134,24 @@ export function createHandler(dependencies: HandlerDependencies = {}) {
               200,
               6 * 60 * 60,
             )
-          : await imageResponse(
-              renderActivitySvg(snapshot, {
-                source,
-                now,
-                theme: output.format === "png" ? output.theme : undefined,
-                display: output.display,
-              }),
-              output,
-              200,
-              6 * 60 * 60,
-              dependencies.rasterize,
-            );
+          : output.format === "total"
+            ? jsonResponse(
+                getCalendarTotal(snapshot.counts, now),
+                200,
+                6 * 60 * 60,
+              )
+            : await imageResponse(
+                renderActivitySvg(snapshot, {
+                  source,
+                  now,
+                  theme: output.format === "png" ? output.theme : undefined,
+                  display: output.display,
+                }),
+                output,
+                200,
+                6 * 60 * 60,
+                dependencies.rasterize,
+              );
       context.waitUntil(cache.put(cacheKey, response.clone()));
       return request.method === "HEAD"
         ? new Response(null, response)
@@ -186,6 +194,14 @@ function parseRequest(
       source,
       username: resource.slice(0, -"/streak".length),
       output: { format: "streak" },
+    };
+  }
+
+  if (resource.endsWith("/total")) {
+    return {
+      source,
+      username: resource.slice(0, -"/total".length),
+      output: { format: "total" },
     };
   }
 
@@ -265,11 +281,7 @@ function svgResponse(svg: string, status: number, maxAge: number): Response {
   });
 }
 
-function jsonResponse(
-  body: Record<string, unknown>,
-  status: number,
-  maxAge: number,
-): Response {
+function jsonResponse(body: object, status: number, maxAge: number): Response {
   return Response.json(body, {
     status,
     headers: {
@@ -286,19 +298,20 @@ function errorResponse(
   status: number,
   maxAge: number,
 ): Response {
-  return output.format === "streak"
+  return output.format === "streak" || output.format === "total"
     ? jsonResponse({ error: message }, status, maxAge)
     : svgResponse(renderErrorSvg(message, source), status, maxAge);
 }
 
 function cachePath(output: Output): string {
   if (output.format === "streak") return "streak";
+  if (output.format === "total") return "total";
   return `${output.format}/${output.format === "png" ? output.theme : "adaptive"}/${output.display}`;
 }
 
 async function imageResponse(
   svg: string,
-  output: Exclude<Output, { format: "streak" }>,
+  output: Exclude<Output, { format: "streak" | "total" }>,
   status: number,
   maxAge: number,
   rasterize = defaultRasterize,
@@ -327,7 +340,7 @@ async function defaultRasterize(svg: string): Promise<Uint8Array> {
 function landingPage(origin: string): Response {
   const escapedOrigin = origin.replace(/[<>&"']/g, "");
   return new Response(
-    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Heatmaps</title><style>body{max-width:760px;margin:10vh auto;padding:24px;font:16px/1.5 system-ui;color:#1f2328}code{background:#f6f8fa;padding:.2em .4em;border-radius:4px}</style><h1>Heatmaps</h1><p>Embeddable activity heatmaps for Last.fm and GitHub.</p><pre><code>&lt;img src="${escapedOrigin}/lastfm/YOUR_USERNAME" alt="Last.fm activity"&gt;\n&lt;img src="${escapedOrigin}/github/YOUR_USERNAME" alt="GitHub activity"&gt;</code></pre><p>Use <code>.svg</code> for an explicit SVG, <code>.png?theme=light</code> or <code>.png?theme=dark</code> for social images, and <code>/streak</code> for streak JSON.</p><p>Display: <code>?display=full</code>, <code>?display=dates</code>, or <code>?display=minimal</code>.</p></html>`,
+    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Heatmaps</title><style>body{max-width:760px;margin:10vh auto;padding:24px;font:16px/1.5 system-ui;color:#1f2328}code{background:#f6f8fa;padding:.2em .4em;border-radius:4px}</style><h1>Heatmaps</h1><p>Embeddable activity heatmaps for Last.fm and GitHub.</p><pre><code>&lt;img src="${escapedOrigin}/lastfm/YOUR_USERNAME" alt="Last.fm activity"&gt;\n&lt;img src="${escapedOrigin}/github/YOUR_USERNAME" alt="GitHub activity"&gt;</code></pre><p>Use <code>.svg</code> for an explicit SVG, <code>.png?theme=light</code> or <code>.png?theme=dark</code> for social images, <code>/streak</code> for streak JSON, and <code>/total</code> for the displayed period's total.</p><p>Display: <code>?display=full</code>, <code>?display=dates</code>, or <code>?display=minimal</code>.</p></html>`,
     { headers: { "Content-Type": "text/html; charset=utf-8" } },
   );
 }

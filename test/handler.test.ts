@@ -130,6 +130,7 @@ describe("public handler", () => {
     "/listener.svg",
     "/listener.png?theme=dark",
     "/listener/streak",
+    "/listener/total",
   ])("does not maintain the legacy Last.fm route %s", async (path) => {
     const fetcher = vi.fn<typeof fetch>();
     const response = await createHandler({
@@ -219,6 +220,62 @@ describe("public handler", () => {
     expect(await response.json()).toEqual({ streak: 2 });
   });
 
+  it("returns GitHub contributions for the exact displayed UTC range", async () => {
+    const context = testContext();
+    const cache = edgeCache();
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        Response.json({
+          data: {
+            user: {
+              contributionsCollection: {
+                contributionCalendar: {
+                  weeks: [
+                    {
+                      contributionDays: [
+                        { date: "2025-07-12", contributionCount: 100 },
+                        { date: "2025-07-13", contributionCount: 2 },
+                        { date: "2026-07-15", contributionCount: 3 },
+                        { date: "2026-07-16", contributionCount: 200 },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        }),
+      ),
+    );
+    const handle = createHandler({
+      fetcher,
+      edgeCache: cache,
+      now: () => new Date("2026-07-15T23:59:59Z"),
+    });
+    const request = new Request("https://graph.example/github/octocat/total");
+    const response = await handle(request, testEnv(), context);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toContain("application/json");
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(response.headers.get("Cache-Control")).toContain("s-maxage=21600");
+    expect(await response.json()).toEqual({
+      total: 5,
+      from: "2025-07-13",
+      to: "2026-07-15",
+    });
+    expect(context.waitUntil).toHaveBeenCalledOnce();
+
+    const cachedContext = testContext();
+    const cachedResponse = await handle(request, testEnv(), cachedContext);
+    expect(await cachedResponse.json()).toEqual({
+      total: 5,
+      from: "2025-07-13",
+      to: "2026-07-15",
+    });
+    expect(cachedContext.waitUntil).not.toHaveBeenCalled();
+  });
+
   it("supports GitHub PNG themes and display modes", async () => {
     const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
       Promise.resolve(
@@ -292,22 +349,72 @@ describe("public handler", () => {
     expect(context.waitUntil).toHaveBeenCalledOnce();
   });
 
-  it("returns JSON errors for streak requests", async () => {
-    const fetcher = vi.fn<typeof fetch>();
-    const handle = createHandler({ fetcher, edgeCache: edgeCache() });
-    const response = await handle(
-      new Request("https://graph.example/lastfm/a%2Fb/streak"),
+  it("returns Last.fm scrobbles for the exact displayed UTC range", async () => {
+    const context = testContext();
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        recenttracks: {
+          "@attr": { totalPages: "1" },
+          track: [
+            {
+              date: { uts: String(Date.parse("2025-07-12T12:00:00Z") / 1000) },
+            },
+            {
+              date: { uts: String(Date.parse("2025-07-13T12:00:00Z") / 1000) },
+            },
+            {
+              date: { uts: String(Date.parse("2026-07-15T12:00:00Z") / 1000) },
+            },
+            {
+              date: { uts: String(Date.parse("2026-07-16T12:00:00Z") / 1000) },
+            },
+          ],
+        },
+      }),
+    );
+    const response = await createHandler({
+      fetcher,
+      edgeCache: edgeCache(),
+      now: () => new Date("2026-07-15T23:59:59Z"),
+    })(
+      new Request("https://graph.example/lastfm/listener/total"),
       testEnv(),
-      testContext(),
+      context,
     );
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toContain("application/json");
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(response.headers.get("Cache-Control")).toContain("s-maxage=21600");
     expect(await response.json()).toEqual({
-      error: "Invalid Last.fm username",
+      total: 2,
+      from: "2025-07-13",
+      to: "2026-07-15",
     });
-    expect(fetcher).not.toHaveBeenCalled();
+    expect(context.waitUntil).toHaveBeenCalledOnce();
   });
+
+  it.each(["streak", "total"])(
+    "returns JSON errors for %s requests",
+    async (endpoint) => {
+      const fetcher = vi.fn<typeof fetch>();
+      const handle = createHandler({ fetcher, edgeCache: edgeCache() });
+      const response = await handle(
+        new Request(`https://graph.example/lastfm/a%2Fb/${endpoint}`),
+        testEnv(),
+        testContext(),
+      );
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get("Content-Type")).toContain(
+        "application/json",
+      );
+      expect(await response.json()).toEqual({
+        error: "Invalid Last.fm username",
+      });
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
 
   it("requires an explicit PNG theme", async () => {
     const fetcher = vi.fn<typeof fetch>();

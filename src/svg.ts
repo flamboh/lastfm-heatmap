@@ -1,4 +1,4 @@
-import { addUtcDays, getCalendarRange } from "./dates";
+import { addUtcDays, getCalendarRange, getCalendarTotal } from "./dates";
 import type { ActivitySnapshot, ActivitySource } from "./types";
 
 const FULL_WIDTH = 734;
@@ -63,10 +63,7 @@ export function renderActivitySvg(
   const presentation = PRESENTATIONS[source];
   const { start, end } = getCalendarRange(now);
   const levels = getThresholds(Object.values(snapshot.counts));
-  const total = Object.values(snapshot.counts).reduce(
-    (sum, count) => sum + count,
-    0,
-  );
+  const { total } = getCalendarTotal(snapshot.counts, now);
   const cells: string[] = [];
   const minimal = display === "minimal";
   const gridX = minimal ? 0 : LABELED_GRID_X;
