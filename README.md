@@ -18,12 +18,6 @@ All images accept `display=full|dates|minimal`. `full` includes labels, totals,
 attribution, and the legend; `dates` omits the footer; `minimal` returns only the
 tile grid.
 
-The legacy `/:username`, `/:username.svg`, `/:username.png`, and
-`/:username/streak` Last.fm routes remain available during migration.
-
-The streak includes today after its first completed activity. Otherwise, an
-active streak continues through yesterday until the current UTC day ends.
-
 ## How it works
 
 - Last.fm completed scrobbles and GitHub GraphQL `contributionCalendar` days are
