@@ -35,7 +35,7 @@ function edgeCache(): Pick<Cache, "match" | "put"> {
 }
 
 describe("public handler", () => {
-  it("documents both source interfaces at the root", async () => {
+  it("shows both source URLs and live examples", async () => {
     const handle = createHandler({ edgeCache: edgeCache() });
     const response = await handle(
       new Request("https://graph.example/"),
@@ -45,8 +45,27 @@ describe("public handler", () => {
 
     expect(response.headers.get("Content-Type")).toContain("text/html");
     const body = await response.text();
-    expect(body).toContain('src="https://graph.example/lastfm/YOUR_USERNAME"');
-    expect(body).toContain('src="https://graph.example/github/YOUR_USERNAME"');
+    expect(body).toContain("embeddable, matching activity graphs");
+    expect(body).toContain(
+      "https://heat.oli.boo/lastfm/<wbr><span>YOUR_USERNAME</span>",
+    );
+    expect(body).toContain(
+      "https://heat.oli.boo/github/<wbr><span>YOUR_USERNAME</span>",
+    );
+    expect(body).toContain('src="https://heat.oli.boo/lastfm/flamboh"');
+    expect(body).toContain('src="https://heat.oli.boo/github/flamboh"');
+    expect(body).toContain(
+      'data-copy="https://heat.oli.boo/lastfm/YOUR_USERNAME"',
+    );
+    expect(body).toContain(
+      'data-copy="https://heat.oli.boo/github/YOUR_USERNAME"',
+    );
+    expect(body).toContain(
+      '<footer>see <a href="https://github.com/flamboh/heatmaps">github</a> for more</footer>',
+    );
+    expect(body).not.toContain(".png");
+    expect(body).not.toContain("/streak");
+    expect(body).not.toContain("<pre");
   });
 
   it("rejects invalid usernames without calling Last.fm", async () => {
