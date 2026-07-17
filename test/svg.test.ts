@@ -16,6 +16,7 @@ describe("SVG rendering", () => {
     expect(svg).toContain("listener &amp; friends's Last.fm activity");
     expect(svg).toContain('data-date="2026-07-15" data-count="12"');
     expect(svg).toContain("12 scrobbles in the last year");
+    expect(svg).toContain("grouped by America/Los_Angeles date");
     expect(svg).toContain('<text x="560" y="126">last.fm</text>');
     expect(svg).toContain("@media (prefers-color-scheme: dark)");
     expect(svg).toContain(".level-0 { fill: #eeeeee; }");

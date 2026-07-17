@@ -9,10 +9,10 @@ function jsonResponse(value: unknown): Response {
 }
 
 describe("Last.fm activity", () => {
-  it("paginates and groups completed scrobbles by UTC date", async () => {
-    const july15 = Date.parse("2026-07-15T00:00:00Z") / 1000;
-    const july15OneAm = Date.parse("2026-07-15T01:00:00Z") / 1000;
-    const july16 = Date.parse("2026-07-16T00:00:00Z") / 1000;
+  it("paginates and groups completed scrobbles by Los Angeles date", async () => {
+    const july14Late = Date.parse("2026-07-15T06:59:59Z") / 1000;
+    const july15 = Date.parse("2026-07-15T07:00:00Z") / 1000;
+    const july15Later = Date.parse("2026-07-16T01:00:00Z") / 1000;
     const fetcher = vi.fn<typeof fetch>().mockImplementation((input) => {
       const page = new URL(String(input)).searchParams.get("page");
       return Promise.resolve(
@@ -23,11 +23,11 @@ describe("Last.fm activity", () => {
               page === "1"
                 ? [
                     { "@attr": { nowplaying: "true" } },
-                    { date: { uts: String(july15) } },
+                    { date: { uts: String(july14Late) } },
                   ]
                 : [
-                    { date: { uts: String(july15OneAm) } },
-                    { date: { uts: String(july16) } },
+                    { date: { uts: String(july15) } },
+                    { date: { uts: String(july15Later) } },
                   ],
           },
         }),
@@ -38,11 +38,11 @@ describe("Last.fm activity", () => {
       username: "listener",
       apiKey: "secret",
       from: july15,
-      to: july16 + 86_400,
+      to: july15Later + 86_400,
       fetcher,
     });
 
-    expect(counts).toEqual({ "2026-07-15": 2, "2026-07-16": 1 });
+    expect(counts).toEqual({ "2026-07-14": 1, "2026-07-15": 2 });
     expect(fetcher).toHaveBeenCalledTimes(2);
     const firstUrl = new URL(String(fetcher.mock.calls[0]?.[0]));
     expect(firstUrl.searchParams.get("limit")).toBe("200");
@@ -96,7 +96,7 @@ describe("Last.fm activity", () => {
   it("replaces the overlap window instead of double-counting it", async () => {
     let stored: ActivitySnapshot | null = {
       username: "listener",
-      counts: { "2026-07-12": 5, "2026-07-14": 9 },
+      counts: { "2026-07-11": 5, "2026-07-14": 9 },
       fetchedThrough: Date.parse("2026-07-15T00:00:00Z") / 1000,
       updatedAt: Date.parse("2026-07-14T00:00:00Z") / 1000,
     };
@@ -127,7 +127,7 @@ describe("Last.fm activity", () => {
       now: new Date("2026-07-15T12:00:00Z"),
     });
 
-    expect(result.counts).toEqual({ "2026-07-12": 5, "2026-07-14": 1 });
+    expect(result.counts).toEqual({ "2026-07-11": 5, "2026-07-14": 1 });
   });
 
   it("initializes a streak from cached daily counts", async () => {
@@ -173,8 +173,8 @@ describe("Last.fm activity", () => {
         "2026-07-14": 1,
         "2026-07-15": 1,
       },
-      fetchedThrough: Date.parse("2026-07-15T01:00:00Z") / 1000,
-      updatedAt: Date.parse("2026-07-15T01:00:00Z") / 1000,
+      fetchedThrough: Date.parse("2026-07-15T08:00:00Z") / 1000,
+      updatedAt: Date.parse("2026-07-15T08:00:00Z") / 1000,
     };
     const store: ActivityStore = {
       get: vi.fn().mockResolvedValue(snapshot),
@@ -186,7 +186,7 @@ describe("Last.fm activity", () => {
       apiKey: "secret",
       store,
       fetcher: vi.fn<typeof fetch>(),
-      now: new Date("2026-07-15T02:00:00Z"),
+      now: new Date("2026-07-15T09:00:00Z"),
       includeStreak: true,
     });
 

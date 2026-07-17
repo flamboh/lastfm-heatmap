@@ -124,4 +124,29 @@ describe("GitHub activity", () => {
       through: "2026-07-14",
     });
   });
+
+  it("uses the Los Angeles date to determine today", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        githubResponse([
+          { date: "2026-07-13", contributionCount: 1 },
+          { date: "2026-07-14", contributionCount: 0 },
+          { date: "2026-07-15", contributionCount: 1 },
+        ]),
+      ),
+    );
+    const snapshot = await loadGithubActivity({
+      username: "octocat",
+      token: "secret",
+      store: memoryStore(),
+      fetcher,
+      now: new Date("2026-07-15T02:00:00Z"),
+      includeStreak: true,
+    });
+
+    expect(snapshot.streak).toEqual({
+      start: "2026-07-13",
+      through: "2026-07-13",
+    });
+  });
 });

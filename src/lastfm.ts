@@ -1,4 +1,10 @@
-import { addUtcDays, getCalendarRange, toDateKey, unixNow } from "./dates";
+import {
+  addUtcDays,
+  dateKeyUnix,
+  getCalendarRange,
+  toDateKey,
+  unixNow,
+} from "./dates";
 import type { ActivitySnapshot, ActivityStore, ActivityStreak } from "./types";
 
 const API_URL = "https://ws.audioscrobbler.com/2.0/";
@@ -49,7 +55,7 @@ export async function loadActivity({
   now = new Date(),
   includeStreak = false,
 }: LoadActivityOptions): Promise<ActivitySnapshot> {
-  const cacheKey = `activity:v1:${username.toLowerCase()}`;
+  const cacheKey = `activity:v2:${username.toLowerCase()}`;
   const cached = await store.get(cacheKey);
   const currentUnix = unixNow(now);
 
@@ -80,8 +86,7 @@ export async function loadActivity({
   const from = cached
     ? Math.max(
         range.startUnix,
-        Math.floor((cached.fetchedThrough - REFRESH_OVERLAP_SECONDS) / 86_400) *
-          86_400,
+        dateKeyUnix(toDateKey(cached.fetchedThrough - REFRESH_OVERLAP_SECONDS)),
       )
     : range.startUnix;
   const fetched = await fetchDailyCountsWithPages({
@@ -237,7 +242,7 @@ async function resolveStreak({
   now,
   pageBudget,
 }: ResolveStreakOptions): Promise<ActivityStreak> {
-  const today = dateKey(now);
+  const today = toDateKey(unixNow(now));
   const through = counts[today] ? today : shiftDateKey(today, -1);
   const recent = findStreakStart(counts, through, rangeStart);
 
@@ -286,16 +291,15 @@ function findStreakStart(
 export function streakDays(streak: ActivityStreak): number {
   if (!streak.start) return 0;
   return Math.floor(
-    (dateKeyUnix(streak.through) - dateKeyUnix(streak.start)) / 86_400 + 1,
+    (Date.parse(`${streak.through}T00:00:00Z`) -
+      Date.parse(`${streak.start}T00:00:00Z`)) /
+      86_400_000 +
+      1,
   );
 }
 
 function dateKey(value: Date): string {
   return value.toISOString().slice(0, 10);
-}
-
-function dateKeyUnix(value: string): number {
-  return Date.parse(`${value}T00:00:00Z`) / 1000;
 }
 
 function shiftDateKey(value: string, days: number): string {

@@ -1,4 +1,9 @@
-import { addUtcDays, getCalendarRange, getCalendarTotal } from "./dates";
+import {
+  addUtcDays,
+  CALENDAR_TIME_ZONE,
+  getCalendarRange,
+  getCalendarTotal,
+} from "./dates";
 import type { ActivitySnapshot, ActivitySource } from "./types";
 
 const FULL_WIDTH = 734;
@@ -119,7 +124,7 @@ export function renderActivitySvg(
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="title desc">
   <title id="title">${escapeXml(snapshot.username)}'s ${presentation.activityName}</title>
-  <desc id="desc">${total.toLocaleString("en-US")} ${presentation.units} over the last year, grouped by UTC date.</desc>
+  <desc id="desc">${total.toLocaleString("en-US")} ${presentation.units} over the last year, grouped by ${CALENDAR_TIME_ZONE} date.</desc>
   <style>
     text { font: 10px Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: ${textColor}; }
     .day { shape-rendering: geometricPrecision; stroke: ${stroke}; stroke-width: 1px; }

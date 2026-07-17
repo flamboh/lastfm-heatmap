@@ -220,7 +220,7 @@ describe("public handler", () => {
     expect(await response.json()).toEqual({ streak: 2 });
   });
 
-  it("returns GitHub contributions for the exact displayed UTC range", async () => {
+  it("returns GitHub contributions for the exact displayed local range", async () => {
     const context = testContext();
     const cache = edgeCache();
     const fetcher = vi.fn<typeof fetch>().mockImplementation(() =>
@@ -313,7 +313,7 @@ describe("public handler", () => {
     expect(rasterize.mock.calls[0]?.[0]).toContain('width="686" height="88"');
   });
 
-  it("returns the current UTC listening streak as JSON", async () => {
+  it("returns the current local listening streak as JSON", async () => {
     const context = testContext();
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({
@@ -349,7 +349,7 @@ describe("public handler", () => {
     expect(context.waitUntil).toHaveBeenCalledOnce();
   });
 
-  it("returns Last.fm scrobbles for the exact displayed UTC range", async () => {
+  it("returns Last.fm scrobbles for the exact displayed local range", async () => {
     const context = testContext();
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json({

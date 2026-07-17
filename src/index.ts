@@ -26,7 +26,7 @@ const JSON_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "X-Content-Type-Options": "nosniff",
 };
-const CACHE_VERSION = 10;
+const CACHE_VERSION = 11;
 
 type Output =
   | { format: "svg"; display: GraphDisplay }

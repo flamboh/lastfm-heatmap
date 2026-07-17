@@ -12,8 +12,8 @@ Both sources expose the same interface:
 - `GET /lastfm/:username` and `GET /github/:username` return adaptive SVGs.
 - Add `.svg` for an explicit SVG URL.
 - Add `.png?theme=light` or `.png?theme=dark` for a 2× PNG.
-- Add `/streak` for the current UTC streak as `{"streak": 14}`.
-- Add `/total` for the exact UTC period displayed by the chart as
+- Add `/streak` for the current America/Los_Angeles streak as `{"streak": 14}`.
+- Add `/total` for the exact America/Los_Angeles period displayed by the chart as
   `{"total": 8167, "from": "2025-07-13", "to": "2026-07-15"}`. GitHub totals
   are contributions, not only commits.
 

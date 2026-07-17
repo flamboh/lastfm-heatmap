@@ -1,4 +1,4 @@
-import { addUtcDays, getCalendarRange, unixNow } from "./dates";
+import { addUtcDays, getCalendarRange, toDateKey, unixNow } from "./dates";
 import type { ActivitySnapshot, ActivityStore, ActivityStreak } from "./types";
 
 const API_URL = "https://api.github.com/graphql";
@@ -52,7 +52,7 @@ export async function loadGithubActivity({
   now?: Date;
   includeStreak?: boolean;
 }): Promise<ActivitySnapshot> {
-  const cacheKey = `github:activity:v1:${username.toLowerCase()}`;
+  const cacheKey = `github:activity:v2:${username.toLowerCase()}`;
   const cached = await store.get(cacheKey);
   const currentUnix = unixNow(now);
   const fresh = cached && currentUnix - cached.updatedAt < FRESH_FOR_SECONDS;
@@ -189,7 +189,7 @@ async function resolveStreak({
   previous?: ActivityStreak;
   now: Date;
 }): Promise<ActivityStreak> {
-  const today = dateKey(now);
+  const today = toDateKey(unixNow(now));
   const through = counts[today] ? today : shiftDateKey(today, -1);
   const recent = findStreakStart(counts, through, rangeStart);
   if (recent !== undefined) return { start: recent, through };

@@ -34,5 +34,12 @@ contribution totals for the token owner should be included.
    bun run deploy
    ```
 
+## Continuous deployment
+
+GitHub Actions verifies and deploys every push to `main`. Add a repository
+Actions secret named `CLOUDFLARE_API_TOKEN` containing a Cloudflare API token
+with permission to deploy this Worker. The workflow can also be run manually
+from GitHub's Actions page.
+
 For local development, copy `.dev.vars.example` to `.dev.vars`, add the API
 keys, and run `bun run dev`. Do not commit `.dev.vars`.
