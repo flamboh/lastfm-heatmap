@@ -12,7 +12,7 @@ const PAGE_SIZE = 200;
 const CONCURRENCY = 6;
 const FRESH_FOR_SECONDS = 6 * 60 * 60;
 const MAX_PAGES = 500;
-const REFRESH_OVERLAP_SECONDS = 2 * 86_400;
+const REFRESH_OVERLAP_SECONDS = 14 * 86_400;
 const STREAK_BACKFILL_DAYS = 32;
 
 interface LastfmTrack {
