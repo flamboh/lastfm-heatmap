@@ -93,10 +93,10 @@ describe("Last.fm activity", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("replaces the overlap window instead of double-counting it", async () => {
+  it("replaces the 14-day overlap window instead of double-counting it", async () => {
     let stored: ActivitySnapshot | null = {
       username: "listener",
-      counts: { "2026-07-11": 5, "2026-07-14": 9 },
+      counts: { "2026-06-29": 3, "2026-07-11": 5, "2026-07-14": 9 },
       fetchedThrough: Date.parse("2026-07-15T00:00:00Z") / 1000,
       updatedAt: Date.parse("2026-07-14T00:00:00Z") / 1000,
     };
@@ -111,6 +111,9 @@ describe("Last.fm activity", () => {
         recenttracks: {
           "@attr": { totalPages: "1" },
           track: [
+            {
+              date: { uts: String(Date.parse("2026-07-11T12:00:00Z") / 1000) },
+            },
             {
               date: { uts: String(Date.parse("2026-07-14T12:00:00Z") / 1000) },
             },
@@ -127,7 +130,11 @@ describe("Last.fm activity", () => {
       now: new Date("2026-07-15T12:00:00Z"),
     });
 
-    expect(result.counts).toEqual({ "2026-07-11": 5, "2026-07-14": 1 });
+    expect(result.counts).toEqual({
+      "2026-06-29": 3,
+      "2026-07-11": 1,
+      "2026-07-14": 1,
+    });
   });
 
   it("initializes a streak from cached daily counts", async () => {
